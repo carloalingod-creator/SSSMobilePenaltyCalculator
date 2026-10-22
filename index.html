@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSS Contribution Penalty Calculator</title>
+<style>
+  :root {
+    --blue: #4560ad;
+    --blue-dark: #2f4a9e;
+    --bg: #e8eaf2;
+    --soft: #f0f6fb;
+    --pink: #f7dcdc;
+    --red: #a31d1d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #222;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+
+  header { margin-bottom: 14px; }
+  /* To add your own logo: put logo.png in the repo and add an <img src="logo.png"> inside the header */
+  header h1 { margin: 0; font-size: 1.25rem; color: var(--blue-dark); line-height: 1.2; }
+  header p { margin: 2px 0 0; font-size: .85rem; color: #333; }
+
+  .section-title {
+    background: var(--blue);
+    color: #fff;
+    padding: 9px 14px;
+    border-radius: 6px 6px 0 0;
+    font-size: 1rem;
+    margin-top: 14px;
+  }
+  .panel {
+    background: #fff;
+    padding: 14px;
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+  label { display: block; color: var(--blue-dark); font-size: .9rem; margin-bottom: 4px; }
+  select, input {
+    width: 100%;
+    padding: 10px;
+    font-size: 1rem;
+    border: 1.5px solid #1e2a78;
+    border-radius: 0;
+    background: #fff;
+    color: #222;
+  }
+
+  /* One card per delinquent month */
+  .period {
+    border: 1.5px solid #c9d1ea;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 14px;
+    background: #fafbfe;
+  }
+  .period-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .period-head strong { color: var(--blue-dark); }
+  .remove-btn {
+    background: #fff;
+    color: var(--red);
+    border: 1px solid var(--red);
+    padding: 4px 10px;
+    font-size: .8rem;
+    border-radius: 6px;
+  }
+  .warn { color: var(--red); font-size: .85rem; margin-top: 8px; min-height: 0; }
+  .stats {
+    margin-top: 12px;
+    background: var(--soft);
+    padding: 8px 10px;
+    font-size: .9rem;
+    color: var(--blue-dark);
+  }
+  .stats div { display: flex; justify-content: space-between; padding: 2px 0; }
+  .stats .days { font-weight: 700; }
+
+  .add-wrap { text-align: center; }
+  .add-btn { background: #fff; color: var(--blue-dark); border: 2px dashed var(--blue); width: 100%; }
+
+  .pen-row {
+    background: var(--pink);
+    color: var(--red);
+    padding: 9px 10px;
+    margin-bottom: 8px;
+    display: flex;
+  }
+  .pen-row:last-child { margin-bottom: 0; }
+  .pen-row span:first-child { width: 170px; font-weight: 600; }
+
+  .total-box {
+    background: var(--soft);
+    margin-top: 14px;
+    padding: 12px 14px 8px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+  }
+  .total-box .cap { font-weight: 700; color: var(--blue-dark); padding-bottom: 6px; border-bottom: 1px solid var(--blue); }
+  .total-box .big { font-size: 3rem; font-weight: 700; color: var(--blue-dark); }
+
+  .reset-wrap { text-align: center; margin: 18px 0 8px; }
+  button {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 12px 36px;
+    font-size: 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>SSS Contribution Penalty Calculator</h1>
+    <p>Compute penalties for late contribution payments</p>
+  </header>
+
+  <div class="section-title">Payment Details</div>
+  <div class="panel">
+    <label for="payDate">Date of Payment</label>
+    <input id="payDate" type="date">
+  </div>
+
+  <div class="section-title">Contribution Details</div>
+  <div class="panel">
+    <div id="periods"></div>
+    <div class="add-wrap">
+      <button id="addBtn" class="add-btn">+ Add Another Month</button>
+    </div>
+  </div>
+
+  <div class="section-title">Penalty Computation</div>
+  <div class="panel">
+    <div class="pen-row"><span>Months Included:</span><span id="count">0</span></div>
+    <div class="pen-row"><span>Total SS Penalty:</span><span id="ssPen">0.00</span></div>
+    <div class="pen-row"><span>Total EC Penalty:</span><span id="ecPen">0.00</span></div>
+    <div class="pen-row"><span>Total Penalty:</span><span id="totPen">0.00</span></div>
+  </div>
+
+  <div class="total-box">
+    <div class="cap">Total Amount Due</div>
+    <div class="big" id="totalDue">0.00</div>
+  </div>
+
+  <div class="reset-wrap"><button id="resetBtn">Reset</button></div>
+</div>
+
+<script>
+  // =====================================================
+  // SETTINGS - replace these with YOUR rules / formulas
+  // =====================================================
+
+  // Penalty rate per month of delay (PLACEHOLDER: 2% - confirm with your formula)
+  const PENALTY_RATE_PER_MONTH = 0.02;
+
+  // How many days count as one month of delay (PLACEHOLDER)
+  const DAYS_PER_MONTH = 30;
+
+  // Due date from the applicable month and year (PLACEHOLDER rule:
+  // last day of the month AFTER the applicable month)
+  // month = 1..12, year = full year. Return "YYYY-MM-DD".
+  function getDueDate(month, year) {
+    const d = new Date(Date.UTC(year, month + 1, 0)); // last day of next month
+    return d.toISOString().slice(0, 10);
+  }
+
+  // Penalty for one amount (PLACEHOLDER: amount x rate x months delayed,
+  // where any part of a month counts as a full month)
+  function computePenalty(amount, daysDelayed) {
+    if (daysDelayed <= 0) return 0;
+    const months = Math.ceil(daysDelayed / DAYS_PER_MONTH);
+    return amount * PENALTY_RATE_PER_MONTH * months;
+  }
+
+  // =====================================================
+  // APP CODE
+  // =====================================================
+  const $ = id => document.getElementById(id);
+  const MONTHS = ["January","February","March","April","May","June",
+                  "July","August","September","October","November","December"];
+
+  function monthOptions() {
+    return '<option value="">Select Month</option>' +
+      MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
+  }
+
+  function yearOptions() {
+    const thisYear = new Date().getFullYear();
+    let html = '<option value="">Select Year</option>';
+    for (let y = thisYear + 2; y >= thisYear - 10; y--) html += `<option value="${y}">${y}</option>`;
+    return html;
+  }
+
+  function todayString() {
+    const t = new Date();
+    const p = n => String(n).padStart(2, "0");
+    return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
+  }
+
+  function money(n) {
+    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function dayDiff(fromStr, toStr) {
+    const a = Date.parse(fromStr + "T00:00:00Z");
+    const b = Date.parse(toStr + "T00:00:00Z");
+    return Math.round((b - a) / 86400000);
+  }
+
+  // ---------- Month cards ----------
+  function addPeriod(prefMonth, prefYear) {
+    const card = document.createElement("div");
+    card.className = "period";
+    card.innerHTML = `
+      <div class="period-head">
+        <strong class="p-title">Month 1</strong>
+        <button class="remove-btn">Remove</button>
+      </div>
+      <div class="grid">
+        <div><label>Applicable Month</label><select class="p-month">${monthOptions()}</select></div>
+        <div><label>Applicable Year</label><select class="p-year">${yearOptions()}</select></div>
+        <div><label>SS Amount (₱)</label><input class="p-ss" type="number" inputmode="decimal" min="0" placeholder="Enter amount"></div>
+        <div><label>EC Amount (₱)</label><input class="p-ec" type="number" inputmode="decimal" min="0" placeholder="Enter amount"></div>
+        <div style="grid-column: 1 / -1"><label>Due Date / Deadline</label><input class="p-due" type="date"></div>
+      </div>
+      <div class="warn p-warn"></div>
+      <div class="stats">
+        <div><span>No. of Days Delayed</span><span class="days p-days">0</span></div>
+        <div><span>SS Penalty</span><span class="p-sspen">0.00</span></div>
+        <div><span>EC Penalty</span><span class="p-ecpen">0.00</span></div>
+        <div><span>Month Total (with penalty)</span><span class="p-sub">0.00</span></div>
+      </div>`;
+
+    if (prefMonth) card.querySelector(".p-month").value = prefMonth;
+    if (prefYear) card.querySelector(".p-year").value = prefYear;
+
+    const refreshDue = () => {
+      const m = parseInt(card.querySelector(".p-month").value, 10);
+      const y = parseInt(card.querySelector(".p-year").value, 10);
+      card.querySelector(".p-due").value = (m && y) ? getDueDate(m, y) : "";
+      recalc();
+    };
+    card.querySelector(".p-month").addEventListener("change", refreshDue);
+    card.querySelector(".p-year").addEventListener("change", refreshDue);
+    ["p-ss", "p-ec", "p-due"].forEach(c => card.querySelector("." + c).addEventListener("input", recalc));
+    card.querySelector(".remove-btn").addEventListener("click", () => {
+      card.remove();
+      recalc();
+    });
+
+    $("periods").appendChild(card);
+    refreshDue();
+  }
+
+  // Suggest the month after the last one entered (Jan -> Feb, Dec -> Jan next year)
+  function addNextPeriod() {
+    const cards = document.querySelectorAll(".period");
+    let m = "", y = "";
+    if (cards.length) {
+      const last = cards[cards.length - 1];
+      const lm = parseInt(last.querySelector(".p-month").value, 10);
+      const ly = parseInt(last.querySelector(".p-year").value, 10);
+      if (lm && ly) {
+        m = lm === 12 ? 1 : lm + 1;
+        y = lm === 12 ? ly + 1 : ly;
+      }
+    }
+    addPeriod(m, y);
+  }
+
+  // ---------- Calculation ----------
+  function recalc() {
+    const paid = $("payDate").value;
+    const cards = document.querySelectorAll(".period");
+    let totSS = 0, totEC = 0, totSSPen = 0, totECPen = 0;
+    const seen = {};
+
+    cards.forEach((card, i) => {
+      card.querySelector(".p-title").textContent = "Month " + (i + 1);
+      card.querySelector(".remove-btn").style.display = cards.length > 1 ? "" : "none";
+
+      const ss = parseFloat(card.querySelector(".p-ss").value) || 0;
+      const ec = parseFloat(card.querySelector(".p-ec").value) || 0;
+      const due = card.querySelector(".p-due").value;
+      const m = card.querySelector(".p-month").value;
+      const y = card.querySelector(".p-year").value;
+
+      let days = 0;
+      if (due && paid) days = Math.max(0, dayDiff(due, paid));
+
+      const ssPen = computePenalty(ss, days);
+      const ecPen = computePenalty(ec, days);
+
+      card.querySelector(".p-days").textContent = days;
+      card.querySelector(".p-sspen").textContent = money(ssPen);
+      card.querySelector(".p-ecpen").textContent = money(ecPen);
+      card.querySelector(".p-sub").textContent = money(ss + ec + ssPen + ecPen);
+
+      // Warn if the same month and year are entered twice
+      const warn = card.querySelector(".p-warn");
+      const key = m && y ? m + "-" + y : "";
+      if (key && seen[key]) {
+        warn.textContent = "This month and year is already entered above.";
+      } else {
+        warn.textContent = "";
+      }
+      if (key) seen[key] = true;
+
+      totSS += ss; totEC += ec; totSSPen += ssPen; totECPen += ecPen;
+    });
+
+    const totPen = totSSPen + totECPen;
+    $("count").textContent = cards.length;
+    $("ssPen").textContent = money(totSSPen);
+    $("ecPen").textContent = money(totECPen);
+    $("totPen").textContent = money(totPen);
+    $("totalDue").textContent = money(totSS + totEC + totPen);
+  }
+
+  function resetAll() {
+    $("periods").innerHTML = "";
+    $("payDate").value = todayString();
+    addPeriod();
+  }
+
+  $("payDate").value = todayString();
+  $("payDate").addEventListener("input", recalc);
+  $("addBtn").addEventListener("click", addNextPeriod);
+  $("resetBtn").addEventListener("click", resetAll);
+  addPeriod();
+</script>
+</body>
+</html>
