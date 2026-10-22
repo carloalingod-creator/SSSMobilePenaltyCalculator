@@ -355,6 +355,7 @@
         <div><span>No. of Days Delayed</span><span class="days p-days">0</span></div>
         <div><span>SS Penalty</span><span class="p-sspen">0.00</span></div>
         <div><span>EC Penalty</span><span class="p-ecpen">0.00</span></div>
+        <div><span>Total Penalty</span><span class="p-totpen">0.00</span></div>
         <div><span>Month Total (with penalty)</span><span class="p-sub">0.00</span></div>
       </div>`;
 
@@ -426,6 +427,7 @@
       card.querySelector(".p-days").textContent = days;
       card.querySelector(".p-sspen").textContent = money(ssPen);
       card.querySelector(".p-ecpen").textContent = money(ecPen);
+      card.querySelector(".p-totpen").textContent = money(ssPen + ecPen);
       card.querySelector(".p-sub").textContent = money(ss + ec + ssPen + ecPen);
 
       // Warn if the same month and year are entered twice
