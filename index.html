@@ -139,6 +139,7 @@
 
   <div class="section-title">Contribution Details</div>
   <div class="panel">
+    <p style="margin:0 0 12px;font-size:.85rem;color:#555;">Applicable months: January 2018 to present.</p>
     <div id="periods"></div>
     <div class="add-wrap">
       <button id="addBtn" class="add-btn">+ Add Another Month</button>
@@ -166,27 +167,124 @@
   // SETTINGS - replace these with YOUR rules / formulas
   // =====================================================
 
-  // Penalty rate per month of delay (PLACEHOLDER: 2% - confirm with your formula)
-  const PENALTY_RATE_PER_MONTH = 0.02;
+  // Penalty rate per day of delay (from your Power Apps SS Penalty formula)
+  const PENALTY_RATE_PER_DAY = 0.000667;
 
-  // How many days count as one month of delay (PLACEHOLDER)
-  const DAYS_PER_MONTH = 30;
-
-  // Due date from the applicable month and year (PLACEHOLDER rule:
-  // last day of the month AFTER the applicable month)
-  // month = 1..12, year = full year. Return "YYYY-MM-DD".
+  // Due date from the applicable month and year (from your Power Apps formula)
+  // month = 1..12, year = full year. Returns "YYYY-MM-DD".
   function getDueDate(month, year) {
-    const d = new Date(Date.UTC(year, month + 1, 0)); // last day of next month
+    const key = year * 100 + month; // e.g. March 2020 -> 202003
+
+    // Special extended deadlines
+    if (key >= 202002 && key <= 202010) return "2020-11-30"; // Feb-Oct 2020
+    if (key === 202107) return "2021-09-30";                 // Jul 2021
+    if (key === 202207) return "2022-09-30";                 // Jul 2022
+    if (key === 202306) return "2023-09-30";                 // Jun 2023
+    if (key === 202309 || key === 202310) return "2023-12-29"; // Sep & Oct 2023
+
+    // Standard rule: last day of the month after the applicable month
+    const d = new Date(Date.UTC(year, month + 1, 0));
     return d.toISOString().slice(0, 10);
   }
 
-  // Penalty for one amount (PLACEHOLDER: amount x rate x months delayed,
-  // where any part of a month counts as a full month)
-  function computePenalty(amount, daysDelayed) {
-    if (daysDelayed <= 0) return 0;
-    const months = Math.ceil(daysDelayed / DAYS_PER_MONTH);
-    return amount * PENALTY_RATE_PER_MONTH * months;
+  // ---- DAYS DELAYED START (from your Power Apps formula) ----
+  // Pandemic exemption period (days inside it are not counted)
+  const EXEMPT_START = "2020-03-15";
+  const EXEMPT_END = "2022-03-01";
+
+  function parts(s) {
+    const [y, m, d] = s.split("-").map(Number);
+    return { y, m, d };
   }
+
+  // 360-day value used for the due date (and exemption dates)
+  function val360Start(s) {
+    const p = parts(s);
+    return p.y * 360 + (p.m - 1) * 30 + ((p.m === 2 && p.d >= 28) ? 30 : Math.min(30, p.d));
+  }
+
+  // 360-day value used for the payment date
+  function val360End(s) {
+    const p = parts(s);
+    return p.y * 360 + (p.m - 1) * 30 + ((p.m === 2 && p.d >= 29) ? 29 : Math.min(30, p.d));
+  }
+
+  // Due date used for counting delay: special deadlines, otherwise the due date field
+  function effectiveDue(month, year, dueStr) {
+    const key = Number(year) * 100 + Number(month);
+    if (key === 202207) return "2022-09-30";
+    if (key === 202306) return "2023-09-30";
+    if (key === 202309 || key === 202310) return "2023-12-29";
+    return dueStr;
+  }
+
+  function computeDaysDelayed(month, year, dueStr, payStr) {
+    if (!month || !year || !dueStr || !payStr) return 0;
+    const due = effectiveDue(month, year, dueStr);
+    const startVal = val360Start(due);
+    const endVal = val360End(payStr);
+
+    // Overlap with the exemption period
+    const oStart = due > EXEMPT_START ? due : EXEMPT_START;
+    const oEnd = payStr < EXEMPT_END ? payStr : EXEMPT_END;
+    let exempt = 0;
+    if (oStart <= oEnd) {
+      exempt = Math.max(0, val360Start(oEnd) - val360Start(oStart));
+    }
+    return Math.max(0, (endVal - startVal) - exempt);
+  }
+  // ---- DAYS DELAYED END ----
+
+  // ---- PENALTY START (from your Power Apps SS Penalty formula) ----
+  // The penalty formula uses its own exemption end date (Feb 28, 2022),
+  // which differs from the one in the Days Delayed formula (Mar 1, 2022).
+  const PEN_EXEMPT_END = "2022-02-28";
+
+  // Days used for the penalty computation
+  function computePenaltyDays(month, year, dueStr, payStr) {
+    if (!month || !year || !dueStr || !payStr) return 0;
+    const key = Number(year) * 100 + Number(month);
+
+    // No penalty if the applicable month is within Mar 2020 - Feb 2022
+    if (key >= 202003 && key <= 202202) return 0;
+
+    let due = effectiveDue(month, year, dueStr);
+    if (key === 202002) due = "2022-02-28"; // Feb 2020 special deadline
+
+    const startVal = val360Start(due);
+    const endVal = val360End(payStr);
+
+    const oStart = due > EXEMPT_START ? due : EXEMPT_START;
+    const oEnd = payStr < PEN_EXEMPT_END ? payStr : PEN_EXEMPT_END;
+    let exempt = 0;
+    if (oStart <= oEnd) {
+      exempt = Math.max(0, val360Start(oEnd) - val360Start(oStart));
+    }
+    return Math.max(0, (endVal - startVal) - exempt);
+  }
+
+  // Penalty = amount x days x daily rate, rounded to 2 decimals
+  function computePenalty(amount, penaltyDays) {
+    const raw = amount * penaltyDays * PENALTY_RATE_PER_DAY;
+    return Math.round((raw + Number.EPSILON) * 100) / 100;
+  }
+  // Days used for the EC penalty (from your Power Apps EC Penalty formula).
+  // Different from SS: no pandemic exemption and no zero-penalty window,
+  // and Feb-Oct 2020 and Jul 2021 have their own deadlines.
+  function computeECPenaltyDays(month, year, dueStr, payStr) {
+    if (!month || !year || !dueStr || !payStr) return 0;
+    const key = Number(year) * 100 + Number(month);
+
+    let due = dueStr;
+    if (key >= 202002 && key <= 202010) due = "2020-11-30";
+    else if (key === 202107) due = "2021-09-30";
+    else if (key === 202207) due = "2022-09-30";
+    else if (key === 202306) due = "2023-09-30";
+    else if (key === 202309 || key === 202310) due = "2023-12-29";
+
+    return Math.max(0, val360End(payStr) - val360Start(due));
+  }
+  // ---- PENALTY END ----
 
   // =====================================================
   // APP CODE
@@ -203,7 +301,7 @@
   function yearOptions() {
     const thisYear = new Date().getFullYear();
     let html = '<option value="">Select Year</option>';
-    for (let y = thisYear + 2; y >= thisYear - 10; y--) html += `<option value="${y}">${y}</option>`;
+    for (let y = thisYear; y >= 2018; y--) html += `<option value="${y}">${y}</option>`;
     return html;
   }
 
@@ -221,6 +319,19 @@
     const a = Date.parse(fromStr + "T00:00:00Z");
     const b = Date.parse(toStr + "T00:00:00Z");
     return Math.round((b - a) / 86400000);
+  }
+
+  // Calculator covers January 2018 up to the present month.
+  // Months later than this month are disabled when the current year is selected.
+  function limitMonths(card) {
+    const now = new Date();
+    const y = parseInt(card.querySelector(".p-year").value, 10);
+    const sel = card.querySelector(".p-month");
+    Array.from(sel.options).forEach(o => {
+      const m = parseInt(o.value, 10);
+      o.disabled = !!(m && y === now.getFullYear() && m > now.getMonth() + 1);
+    });
+    if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) sel.value = "";
   }
 
   // ---------- Month cards ----------
@@ -251,6 +362,7 @@
     if (prefYear) card.querySelector(".p-year").value = prefYear;
 
     const refreshDue = () => {
+      limitMonths(card);
       const m = parseInt(card.querySelector(".p-month").value, 10);
       const y = parseInt(card.querySelector(".p-year").value, 10);
       card.querySelector(".p-due").value = (m && y) ? getDueDate(m, y) : "";
@@ -279,6 +391,9 @@
       if (lm && ly) {
         m = lm === 12 ? 1 : lm + 1;
         y = lm === 12 ? ly + 1 : ly;
+        // Don't suggest a month later than the present month
+        const now = new Date();
+        if (y * 100 + m > now.getFullYear() * 100 + (now.getMonth() + 1)) { m = ""; y = ""; }
       }
     }
     addPeriod(m, y);
@@ -301,11 +416,12 @@
       const m = card.querySelector(".p-month").value;
       const y = card.querySelector(".p-year").value;
 
-      let days = 0;
-      if (due && paid) days = Math.max(0, dayDiff(due, paid));
+      const days = computeDaysDelayed(m, y, due, paid);
 
-      const ssPen = computePenalty(ss, days);
-      const ecPen = computePenalty(ec, days);
+      const penDays = computePenaltyDays(m, y, due, paid);
+      const ssPen = computePenalty(ss, penDays);
+      const ecDays = computeECPenaltyDays(m, y, due, paid);
+      const ecPen = computePenalty(ec, ecDays);
 
       card.querySelector(".p-days").textContent = days;
       card.querySelector(".p-sspen").textContent = money(ssPen);
